@@ -78,14 +78,16 @@ def load_places():
 
 def load_hrsa():
     df = pd.read_csv(HRSA_FILE, dtype=str)
-    state = find_col(df, "state", "abbrev")
-    df = df[df[state] == "WA"].copy()
-    status = find_col(df, "status", "desc")
-    fips = find_col(df, "county", "fips")
-    df = df[df[status].str.contains("Designated", case=False, na=False)
-            & ~df[status].str.contains("Withdrawn|Proposed", case=False, na=False)]
-    df["county_fips"] = df[fips].str.zfill(5)
-    # Many-to-one: several MUA/P records can cover one county -> one flag per county
+    # The HRSA file is national, so filter to Washington first
+    df = df[df["State Abbreviation"] == "WA"].copy()
+    # Keep only currently designated records (drop withdrawn / proposed-for-withdrawal)
+    status = df["MUA/P Status Description"]
+    df = df[status.str.contains("Designated", case=False, na=False)
+            & ~status.str.contains("Withdrawn|Proposed", case=False, na=False)]
+    # 5-digit county FIPS (state + county)
+    df["county_fips"] = df["Common State County FIPS Code"].str.zfill(5)
+    # Many-to-one: many MUA/P records (often census tracts) fall in one county
+    # -> collapse to one row per county
     flags = (df.groupby("county_fips").size()
                .rename("num_mua_p_designations").reset_index())
     flags["is_underserved"] = 1
